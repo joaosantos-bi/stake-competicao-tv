@@ -1,0 +1,40 @@
+# Screenshots of the published TV page after every data.json commit (Stake Race evidence).
+# The Fabric notebook NB_Stake_Race_TV copies them to OneLake (GoldLakehouse Files/stake_race_evidence/<stamp>/).
+name: TV evidence
+on:
+  push:
+    branches: [main]
+    paths: [data.json]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: tv-evidence
+  cancel-in-progress: false
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install browser
+        run: npm install --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - name: Take screenshots
+        run: |
+          STAMP=$(python3 -c "import json,datetime as d;print(d.datetime.strptime(json.load(open('data.json'))['built'],'%d %b %Y, %H:%M').strftime('%Y-%m-%d_%H%M'))")
+          mkdir -p "evidence/$STAMP"
+          python3 -m http.server 8000 >/dev/null 2>&1 &
+          sleep 2
+          node .github/shot.js "evidence/$STAMP"
+          cp data.json "evidence/$STAMP/data.json"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+      - name: Commit evidence
+        run: |
+          git config user.name "stake-tv-evidence"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence
+          git commit -m "evidence $STAMP" || exit 0
+          git pull --rebase
+          git push
